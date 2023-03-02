@@ -3,22 +3,20 @@
 
 use parser::Parser;
 
-mod spider;
 mod parser;
 mod requester;
-
+mod spider;
 
 #[tokio::main]
 async fn main() {
-    spider::Spider::run(Vec::new(), TODOParser {}).await
+    spider::Spider::run(Vec::new(), TODOParser {}, "".into()).await
 }
-
 
 #[derive(Clone, Copy)]
 struct TODOParser {}
 
 impl Parser for TODOParser {
-    async fn parse(self, page: &str) -> Vec<reqwest::Request>  {
+    async fn parse(self, page: &str) -> Vec<reqwest::Request> {
         todo!()
     }
 }

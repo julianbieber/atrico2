@@ -1,4 +1,4 @@
-use std::{collections::HashSet, time::Duration, sync::Arc};
+use std::{collections::HashSet, path::PathBuf, sync::Arc, time::Duration};
 
 use reqwest::{Request, Url};
 use tokio::{spawn, task::JoinHandle, time::sleep};
@@ -12,20 +12,26 @@ pub struct Spider {
 }
 
 impl Spider {
-    pub async fn run<P>(initial: Vec<Request>, parser: P) where P: Parser + Copy + Send + 'static{
+    pub async fn run<P>(initial: Vec<Request>, parser: P, cache_dir: PathBuf)
+    where
+        P: Parser + Copy + Send + 'static,
+    {
         let s = Spider {
             state: SpiderState::new(initial),
             open_requests: Vec::new(),
-            requester: Arc::new(Requester {}),
+            requester: Arc::new(Requester::new(cache_dir)),
         };
         s.run_internal(parser).await
     }
-    async fn run_internal<P>(mut self, parser: P) where P: Parser + Copy + Send + 'static {
+    async fn run_internal<P>(mut self, parser: P)
+    where
+        P: Parser + Copy + Send + 'static,
+    {
         loop {
             if let Some(r) = self.state.next() {
                 let req = self.requester.clone();
-                let p = parser.clone();
-                self.open_requests.push(spawn(async move { 
+                let p = parser;
+                self.open_requests.push(spawn(async move {
                     let response = req.execute(r).await;
                     p.parse(&response).await
                 }));
