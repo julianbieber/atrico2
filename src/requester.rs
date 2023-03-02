@@ -1,7 +1,25 @@
 use std::{path::PathBuf, sync::Arc};
 
-use reqwest::Client;
+use reqwest::header::HeaderMap;
+use reqwest::{Body, Client, Method};
 use reqwest::{Request, Url};
+
+#[derive(Clone, Debug)]
+pub struct SimpleRequest {
+    pub method: Method,
+    pub url: Url,
+    pub headers: HeaderMap,
+    pub body: Option<String>,
+}
+
+impl From<SimpleRequest> for Request {
+    fn from(value: SimpleRequest) -> Self {
+        let mut r = Request::new(value.method, value.url);
+        (*r.headers_mut()) = value.headers;
+        (*r.body_mut()) = value.body.map(Body::from);
+        r
+    }
+}
 
 pub struct Requester {
     cache: Mutex<PageCache>,
@@ -17,12 +35,12 @@ impl Requester {
             client: Client::new(),
         }
     }
-    pub async fn execute(self: Arc<Self>, r: Request) -> String {
-        if let Some(r) = self.get_from_cache(r.url()).await {
+    pub async fn execute(self: Arc<Self>, r: SimpleRequest) -> String {
+        if let Some(r) = self.get_from_cache(&r.url).await {
             r
         } else {
-            let u = r.url().clone();
-            let response = self.client.execute(r).await.unwrap();
+            let u = r.url.clone();
+            let response = self.client.execute(r.into()).await.unwrap();
             let content = response.text().await.unwrap();
             self.write_to_cache(&u, &content).await;
             content

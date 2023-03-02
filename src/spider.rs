@@ -1,20 +1,23 @@
 use std::{collections::HashSet, path::PathBuf, sync::Arc, time::Duration};
 
-use reqwest::{Request, Url};
+use reqwest::Url;
 use tokio::{spawn, task::JoinHandle, time::sleep};
 
-use crate::{parser::Parser, requester::Requester};
+use crate::{
+    parser::Parser,
+    requester::{Requester, SimpleRequest},
+};
 
 pub struct Spider {
     state: SpiderState,
     requester: Arc<Requester>,
-    open_requests: Vec<JoinHandle<Vec<Request>>>,
+    open_requests: Vec<JoinHandle<Vec<SimpleRequest>>>,
 }
 
 impl Spider {
-    pub async fn run<P>(initial: Vec<Request>, parser: P, cache_dir: PathBuf)
+    pub async fn run<P>(initial: Vec<SimpleRequest>, parser: P, cache_dir: PathBuf)
     where
-        P: Parser + Copy + Send + 'static,
+        P: Parser + Clone + Send + 'static,
     {
         let s = Spider {
             state: SpiderState::new(initial),
@@ -25,12 +28,14 @@ impl Spider {
     }
     async fn run_internal<P>(mut self, parser: P)
     where
-        P: Parser + Copy + Send + 'static,
+        P: Parser + Clone + Send + 'static,
     {
         loop {
             if let Some(r) = self.state.next() {
+                let u = r.url.as_str();
+                dbg!(u);
                 let req = self.requester.clone();
-                let p = parser;
+                let p = parser.clone();
                 self.open_requests.push(spawn(async move {
                     let response = req.execute(r).await;
                     p.parse(&response).await
@@ -40,8 +45,8 @@ impl Spider {
             for job in self.open_requests.into_iter() {
                 if job.is_finished() {
                     if let Ok(new_requests) = job.await {
-                        for r in new_requests {
-                            self.state.add(r);
+                        for r in new_requests.iter() {
+                            self.state.add(r.clone());
                         }
                     }
                 } else {
@@ -59,12 +64,12 @@ impl Spider {
     }
 }
 struct SpiderState {
-    open: Vec<Request>,
+    open: Vec<SimpleRequest>,
     seen: HashSet<Url>,
 }
 
 impl SpiderState {
-    fn new(initial_requests: Vec<Request>) -> SpiderState {
+    fn new(initial_requests: Vec<SimpleRequest>) -> SpiderState {
         let mut s = SpiderState {
             open: Vec::new(),
             seen: HashSet::new(),
@@ -75,13 +80,13 @@ impl SpiderState {
         s
     }
 
-    fn add(&mut self, r: Request) {
-        if self.seen.insert(r.url().clone()) {
+    fn add(&mut self, r: SimpleRequest) {
+        if self.seen.insert(r.url.clone()) {
             self.open.push(r);
         }
     }
 
-    fn next(&mut self) -> Option<Request> {
+    fn next(&mut self) -> Option<SimpleRequest> {
         self.open.pop()
     }
 
