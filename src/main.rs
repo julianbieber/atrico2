@@ -3,7 +3,7 @@
 
 use requester::SimpleRequest;
 use reqwest::{header::HeaderMap, Method, Url};
-use worm_wiki::WormWikiListOfCharacters;
+use worm_wiki::{WormRequestFilter, WormWikiListOfCharacters};
 
 mod html;
 mod layout;
@@ -15,13 +15,9 @@ mod worm_wiki;
 #[tokio::main]
 async fn main() {
     spider::Spider::run(
-        vec![SimpleRequest {
-            method: Method::GET,
-            url: Url::parse("https://worm.fandom.com/wiki/Worm_Wiki").unwrap(),
-            headers: HeaderMap::new(),
-            body: None,
-        }],
+        worm_wiki::initial(),
         WormWikiListOfCharacters::new(),
+        WormRequestFilter,
         "page_cache".into(),
     )
     .await

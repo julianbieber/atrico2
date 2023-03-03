@@ -4,7 +4,7 @@ use crate::requester::SimpleRequest;
 
 pub trait LayoutComponent<Content, Extracted> {
     fn matches(&self, content: &Content) -> bool;
-    fn extract(&self, content: &Content) -> Vec<Extracted>;
+    fn extract(&self, request: &SimpleRequest, content: &Content) -> Vec<Extracted>;
 }
 
 pub struct Layout<Content, Extracted> {
@@ -12,10 +12,10 @@ pub struct Layout<Content, Extracted> {
 }
 
 impl<Content, Extracted> Layout<Content, Extracted> {
-    fn extract(&self, content: &Content) -> Vec<Extracted> {
+    fn extract(&self, request: &SimpleRequest, content: &Content) -> Vec<Extracted> {
         self.components
             .iter()
-            .flat_map(|c| c.extract(&content))
+            .flat_map(|c| c.extract(request, &content))
             .collect()
     }
     fn matches(&self, content: &Content) -> bool {
@@ -30,6 +30,7 @@ pub struct LayoutParser<Content, Extracted> {
 impl<Content, Extracted> LayoutParser<Content, Extracted> {
     pub async fn parse<F, Router, Fut>(
         self,
+        request: &SimpleRequest,
         page: &str,
         parser: F,
         router: Router,
@@ -53,7 +54,7 @@ impl<Content, Extracted> LayoutParser<Content, Extracted> {
                 panic!("No matching layout");
             }
             let layout = matching[0];
-            layout.extract(&content)
+            layout.extract(request, &content)
         };
         router(extracted).await
     }

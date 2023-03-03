@@ -14,39 +14,54 @@ pub struct Spider {
     open_requests: Vec<JoinHandle<Vec<SimpleRequest>>>,
 }
 
+pub trait RequestFilter {
+    fn is_valid(&self, request: &SimpleRequest) -> bool;
+}
+
 impl Spider {
-    pub async fn run<P>(initial: Vec<SimpleRequest>, parser: P, cache_dir: PathBuf)
-    where
+    pub async fn run<P, R>(
+        initial: Vec<SimpleRequest>,
+        parser: P,
+        request_filter: R,
+        cache_dir: PathBuf,
+    ) where
         P: Parser + Clone + Send + 'static,
+        R: RequestFilter,
     {
         let s = Spider {
             state: SpiderState::new(initial),
             open_requests: Vec::new(),
             requester: Arc::new(Requester::new(cache_dir)),
         };
-        s.run_internal(parser).await
+        s.run_internal(parser, request_filter).await
     }
-    async fn run_internal<P>(mut self, parser: P)
+    async fn run_internal<P, R>(mut self, parser: P, request_filter: R)
     where
         P: Parser + Clone + Send + 'static,
+        R: RequestFilter,
     {
         loop {
             if let Some(r) = self.state.next() {
-                let u = r.url.as_str();
-                dbg!(u);
                 let req = self.requester.clone();
                 let p = parser.clone();
                 self.open_requests.push(spawn(async move {
-                    let response = req.execute(r).await;
-                    p.parse(&response).await
+                    let response = req.execute(r.clone()).await;
+                    p.parse(&r, &response).await
                 }));
             }
             let mut new_jobs = Vec::new();
             for job in self.open_requests.into_iter() {
                 if job.is_finished() {
-                    if let Ok(new_requests) = job.await {
-                        for r in new_requests.iter() {
-                            self.state.add(r.clone());
+                    match job.await {
+                        Ok(new_requests) => {
+                            for r in new_requests.iter() {
+                                if request_filter.is_valid(r) {
+                                    self.state.add(r.clone());
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            dbg!(e);
                         }
                     }
                 } else {
