@@ -2,6 +2,7 @@ use std::{collections::HashSet, path::PathBuf, sync::Arc, time::Duration};
 
 use reqwest::Url;
 use tokio::{spawn, task::JoinHandle, time::sleep};
+use tracing::warn;
 
 use crate::{
     parser::Parser,
@@ -41,7 +42,9 @@ impl Spider {
         R: RequestFilter,
     {
         loop {
-            if let Some(r) = self.state.next() {
+            let mut stepped = false;
+            while let Some(r) = self.state.next() {
+                stepped = true;
                 let req = self.requester.clone();
                 let p = parser.clone();
                 self.open_requests.push(spawn(async move {
@@ -52,6 +55,7 @@ impl Spider {
             let mut new_jobs = Vec::new();
             for job in self.open_requests.into_iter() {
                 if job.is_finished() {
+                    stepped = true;
                     match job.await {
                         Ok(new_requests) => {
                             for r in new_requests.iter() {
@@ -60,8 +64,8 @@ impl Spider {
                                 }
                             }
                         }
-                        Err(e) => {
-                            dbg!(e);
+                        Err(_e) => {
+                            // warn!(error =? e, "failure during request");
                         }
                     }
                 } else {
@@ -70,10 +74,14 @@ impl Spider {
             }
             self.open_requests = new_jobs;
 
+            // dbg!(self.open_requests.len() + self.state.open.len());
+
             if self.open_requests.is_empty() && self.state.is_empty() {
                 break;
             } else {
-                sleep(Duration::from_millis(100)).await;
+                if !stepped {
+                    sleep(Duration::from_millis(10)).await;
+                }
             }
         }
     }
